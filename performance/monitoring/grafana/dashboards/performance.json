@@ -1,0 +1,52 @@
+{
+  "title": "Performance Dashboard",
+  "uid": "perf-dash-1",
+  "schemaVersion": 36,
+  "refresh": "5s",
+  "panels": [
+    {
+      "title": "RPS (Requests per Second)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total[10s])) by (app)",
+          "legendFormat": "{{app}}"
+        }
+      ]
+    },
+    {
+      "title": "p95 Latency (Seconds)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[10s])) by (le, app))",
+          "legendFormat": "{{app}}"
+        }
+      ]
+    },
+    {
+      "title": "Node.js Process CPU (%)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "process_cpu_user_seconds_total + process_cpu_system_seconds_total",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    },
+    {
+      "title": "Node.js Heap Memory (Bytes)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "nodejs_heap_space_size_used_bytes",
+          "legendFormat": "{{job}}"
+        }
+      ]
+    }
+  ]
+}

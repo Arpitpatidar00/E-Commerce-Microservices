@@ -1,0 +1,63 @@
+name: Publish Docker Images to GHCR
+
+on:
+  push:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+  # Converts the repository owner name to lowercase for valid docker tags
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/ecommerce
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    # We use a matrix strategy to build all services in parallel
+    strategy:
+      matrix:
+        service:
+          - name: user-service
+            path: services/user-service
+          - name: product-service
+            path: services/product-service
+          - name: inventory-service
+            path: services/inventory-service
+          - name: order-service
+            path: services/order-service
+          - name: gateway
+            path: gateway
+    
+    # Permissions required to publish to GitHub Container Registry
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Downcase GitHub Owner Name
+        run: |
+          echo "OWNER_LOWERCASE=${GITHUB_REPOSITORY_OWNER,,}" >> $GITHUB_ENV
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          # We tag the image with 'latest' and the git commit hash
+          tags: |
+            ghcr.io/${{ env.OWNER_LOWERCASE }}/ecommerce-${{ matrix.service.name }}:latest
+            ghcr.io/${{ env.OWNER_LOWERCASE }}/ecommerce-${{ matrix.service.name }}:${{ github.sha }}
+          build-args: |
+            SERVICE_NAME=${{ matrix.service.name }}
+            SERVICE_PATH=${{ matrix.service.path }}

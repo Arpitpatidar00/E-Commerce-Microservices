@@ -3,6 +3,7 @@ import axios from 'axios';
 import axiosRetry from 'axios-retry';
 import CircuitBreaker from 'opossum';
 import { CreateOrderRequest, Order, OrderModel } from '../types/order.types';
+import { NotFoundError, ServiceUnavailableError } from '@ecommerce/shared';
 
 const client = axios.create();
 axiosRetry(client, { 
@@ -21,45 +22,46 @@ const fetchProductPrice = async (productId: string, productServiceUrl: string) =
   return response.data.data; // Using standardized ApiResponse
 };
 
-// Circuit breaker opens after 50% failures, requires 5 requests to trip, and waits 10s before half-open
 const breaker = new CircuitBreaker(fetchProductPrice, {
-  timeout: 5000,
+  timeout: 2000,
   errorThresholdPercentage: 50,
-  resetTimeout: 10000,
-  volumeThreshold: 5
+  resetTimeout: 5000,
+  volumeThreshold: 10
 });
 
 breaker.fallback(() => {
-  throw new Error("Product Service is currently unavailable. Please try again later.");
+  throw new ServiceUnavailableError("Product Service is currently unavailable. Please try again later.");
 });
 
 export class OrderService {
   private productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3002';
 
-  async createOrder(data: CreateOrderRequest): Promise<Order> {
-    let totalAmount = 0;
-    const itemsWithPrices = [];
-
-    // Fetch authoritative prices from Product Service using Circuit Breaker & Retries
-    for (const item of data.items) {
+  async createOrder(data: CreateOrderRequest, userId: string): Promise<Order> {
+    const pricePromises = data.items.map(async (item) => {
       try {
         const product = await breaker.fire(item.productId, this.productServiceUrl) as any;
-        
-        const price = product.price;
-        totalAmount += price * item.quantity;
-        
-        itemsWithPrices.push({
+        return {
           productId: item.productId,
           quantity: item.quantity,
-          price: price.toString()
-        });
+          price: product.price,
+        };
       } catch (error: any) {
-        throw new Error(`Failed to fetch price for product ${item.productId}: ${error.message}`);
+        throw new ServiceUnavailableError(`Price lookup failed for product ${item.productId}`);
       }
-    }
+    });
+
+    const fetchedItems = await Promise.all(pricePromises);
+    let totalAmount = 0;
+    const itemsWithPrices = fetchedItems.map(item => {
+      totalAmount += item.price * item.quantity;
+      return {
+        ...item,
+        price: item.price.toString()
+      };
+    });
 
     const doc = await orderRepository.createOrderWithOutbox({
-      userId: data.userId,
+      userId,
       totalAmount: totalAmount.toString(),
       items: itemsWithPrices
     });
@@ -77,7 +79,7 @@ export class OrderService {
   async getOrderById(id: number): Promise<Order> {
     const order = await orderRepository.findById(id);
     if (!order) {
-      throw new Error('Order not found');
+      throw new NotFoundError('Order not found');
     }
     return {
       id: order.id,

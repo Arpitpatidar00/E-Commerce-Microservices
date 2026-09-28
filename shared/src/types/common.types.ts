@@ -9,3 +9,9 @@ export type PaginatedResult<T> = {
   items: T[];
   pagination: Pagination;
 };
+
+declare module 'fastify' {
+  interface FastifyContextConfig {
+    idempotency?: boolean;
+  }
+}

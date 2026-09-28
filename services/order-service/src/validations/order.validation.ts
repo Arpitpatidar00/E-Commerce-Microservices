@@ -6,7 +6,6 @@ export const orderItemSchema = z.object({
 });
 
 export const createOrderRequestSchema = z.object({
-  userId: z.string(),
   items: z.array(orderItemSchema).min(1)
 });
 

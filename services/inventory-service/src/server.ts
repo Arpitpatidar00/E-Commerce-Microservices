@@ -4,6 +4,7 @@ dotenv.config();
 import { buildApp } from './app';
 import { startServer, connectMongo } from '@ecommerce/shared';
 import mongoose from 'mongoose';
+import { startOrderEventsConsumer } from './consumers/orderEventsConsumer';
 
 const start = async () => {
   const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/ecommerce_inventory';
@@ -19,5 +20,10 @@ const start = async () => {
     }
   ]);
 };
+
+startOrderEventsConsumer().catch((err) => {
+  console.error('Order events consumer crashed', err);
+  process.exit(1);
+});
 
 start();

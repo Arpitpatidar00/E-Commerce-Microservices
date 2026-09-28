@@ -13,7 +13,6 @@ const start = async () => {
   const app = buildApp();
   const port = process.env.PORT ? parseInt(process.env.PORT) : 3002;
   
-  // @ts-ignore
   await startServer(app, port, 'Product Service', [
     async () => {
       await mongoose.connection.close();

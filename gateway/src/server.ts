@@ -8,17 +8,37 @@ dotenv.config();
 
 const app = fastify({ logger: true });
 
-// @ts-ignore
 app.register(rateLimit, {
-  max: 10000000, // Massively increased for peak load testing
+  max: 1000,
   timeWindow: "1 minute",
 });
 
-// @ts-ignore
 app.register(metricsPlugin, { appName: "gateway" });
 
+import { JwtService } from "@ecommerce/shared";
+
+const PUBLIC_PATHS = new Set([
+  "/health",
+  "/metrics",
+  "/api/users/auth/register",
+  "/api/users/auth/login",
+]);
+
+app.addHook("preHandler", async (request, reply) => {
+  if (PUBLIC_PATHS.has(request.url.split("?")[0])) return;
+
+  const auth = request.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    return reply.status(401).send({ success: false, message: "Missing bearer token" });
+  }
+  try {
+    (request as any).user = JwtService.verify(auth.split(" ")[1]);
+  } catch {
+    return reply.status(401).send({ success: false, message: "Invalid or expired token" });
+  }
+});
+
 // Route to User Service
-// @ts-ignore
 app.register(proxy, {
   upstream: process.env.USER_SERVICE_URL || "http://localhost:3001",
   prefix: "/api/users",
@@ -26,7 +46,6 @@ app.register(proxy, {
 });
 
 // Route to Product Service
-// @ts-ignore
 app.register(proxy, {
   upstream: process.env.PRODUCT_SERVICE_URL || "http://localhost:3002",
   prefix: "/api/products",
@@ -34,11 +53,17 @@ app.register(proxy, {
 });
 
 // Route to Order Service
-// @ts-ignore
 app.register(proxy, {
   upstream: process.env.ORDER_SERVICE_URL || "http://localhost:3003",
   prefix: "/api/orders",
   rewritePrefix: "/api/orders",
+});
+
+// Route to Inventory Service
+app.register(proxy, {
+  upstream: process.env.INVENTORY_SERVICE_URL || "http://localhost:3004",
+  prefix: "/api/inventory",
+  rewritePrefix: "/api/inventory",
 });
 
 app.get("/health", async (request, reply) => {

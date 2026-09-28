@@ -7,7 +7,6 @@ export const startServer = async (
   serviceName: string,
   cleanupTasks: (() => Promise<void>)[] = []
 ) => {
-  // @ts-ignore
   setupGracefulShutdown(app, cleanupTasks);
 
   try {

@@ -17,13 +17,6 @@ export const getProducts = async (req: FastifyRequest<{ Querystring: GetProducts
 
 export const getProductById = async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
   const { id } = req.params;
-  try {
-    const product = await productService.getProductById(id);
-    return ApiResponse.sendSuccess(reply, product, 'Product fetched successfully', HttpStatus.OK);
-  } catch (error: any) {
-    if (error.message === 'Product not found') {
-      throw new NotFoundError(Messages.PRODUCT_NOT_FOUND);
-    }
-    throw error;
-  }
+  const product = await productService.getProductById(id);
+  return ApiResponse.sendSuccess(reply, product, 'Product fetched successfully', HttpStatus.OK);
 };

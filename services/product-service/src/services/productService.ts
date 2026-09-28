@@ -1,40 +1,81 @@
 import { productRepository } from '../repositories/productRepository';
 import { redisClient } from '../config/db';
 import { CreateProductRequest, GetProductsQuery, Product, ProductsResult } from '../types/product.types';
+import { NotFoundError } from '@ecommerce/shared';
 
 export class ProductService {
-  private inFlightRequests = new Map<string, Promise<any>>();
-
-  private async executeWithStampedeProtection<T>(key: string, fetchFn: () => Promise<T>): Promise<T> {
-    if (this.inFlightRequests.has(key)) {
-      return this.inFlightRequests.get(key) as Promise<T>;
+  private async getOrSetCache<T>(cacheKey: string, ttl: number, fetchFn: () => Promise<T>): Promise<T> {
+    try {
+      const cached = await redisClient.get(cacheKey);
+      if (cached) return JSON.parse(cached);
+    } catch (e) {
+      console.error(`Redis get failed for ${cacheKey}`, e);
     }
 
-    const promise = fetchFn().finally(() => {
-      this.inFlightRequests.delete(key);
-    });
-
-    this.inFlightRequests.set(key, promise);
-    return promise;
+    const lockKey = `lock:${cacheKey}`;
+    const acquired = await redisClient.set(lockKey, '1', 'EX', 10, 'NX').catch(() => null);
+    
+    if (acquired) {
+      try {
+        const result = await fetchFn();
+        try {
+          await redisClient.set(cacheKey, JSON.stringify(result), 'EX', ttl);
+        } catch (e) {
+          console.error(`Redis set failed for ${cacheKey}`, e);
+        }
+        return result;
+      } finally {
+        await redisClient.del(lockKey).catch(() => null);
+      }
+    } else {
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 100));
+        try {
+          const retryCached = await redisClient.get(cacheKey);
+          if (retryCached) return JSON.parse(retryCached);
+        } catch (e) {}
+      }
+      return fetchFn(); // Fallback to fetching directly if lock times out
+    }
   }
 
   async getProducts(query: GetProductsQuery): Promise<ProductsResult> {
     const page = query.page || 1;
     const limit = query.limit || 10;
     const cacheKey = `products:page:${page}:limit:${limit}`;
-    try {
-      const cachedProducts = await redisClient.get(cacheKey);
-      if (cachedProducts) {
-        return JSON.parse(cachedProducts);
-      }
-    } catch (e) {
-      console.error('Redis failed during getProducts get', e);
-    }
-
-    const result = await this.executeWithStampedeProtection(cacheKey, () => productRepository.findAll({ page, limit }));
     
-    const formattedResult: ProductsResult = {
-      items: result.items.map(doc => ({
+    return this.getOrSetCache(cacheKey, 300, async () => {
+      const result = await productRepository.findAll({ page, limit });
+      return {
+        items: result.items.map(doc => ({
+          id: doc._id.toString(),
+          name: doc.name,
+          description: doc.description,
+          price: doc.price,
+          stock: doc.stock,
+          createdAt: doc.createdAt.toISOString(),
+          updatedAt: doc.updatedAt.toISOString()
+        })),
+        pagination: {
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          totalPages: result.totalPages
+        }
+      };
+    });
+  }
+
+  async getProductById(id: string): Promise<Product> {
+    const cacheKey = `product:${id}`;
+    
+    return this.getOrSetCache(cacheKey, 300, async () => {
+      const doc = await productRepository.findById(id);
+      if (!doc) {
+        throw new NotFoundError('Product not found');
+      }
+
+      return {
         id: doc._id.toString(),
         name: doc.name,
         description: doc.description,
@@ -42,59 +83,8 @@ export class ProductService {
         stock: doc.stock,
         createdAt: doc.createdAt.toISOString(),
         updatedAt: doc.updatedAt.toISOString()
-      })),
-      pagination: {
-        page: result.page,
-        limit: result.limit,
-        total: result.total,
-        totalPages: result.totalPages
-      }
-    };
-
-    try {
-      await redisClient.set(cacheKey, JSON.stringify(formattedResult), 'EX', 300); // 5 min cache
-    } catch (e) {
-      console.error('Redis failed during getProducts set', e);
-    }
-    
-    return formattedResult;
-  }
-
-  async getProductById(id: string): Promise<Product> {
-    const cacheKey = `product:${id}`;
-    
-    try {
-      const cachedProduct = await redisClient.get(cacheKey);
-      if (cachedProduct) {
-        return JSON.parse(cachedProduct);
-      }
-    } catch (e) {
-      console.error('Redis failed during getProductById get', e);
-    }
-
-    const doc = await this.executeWithStampedeProtection(cacheKey, () => productRepository.findById(id));
-    
-    if (!doc) {
-      throw new Error('Product not found');
-    }
-
-    const product: Product = {
-      id: doc._id.toString(),
-      name: doc.name,
-      description: doc.description,
-      price: doc.price,
-      stock: doc.stock,
-      createdAt: doc.createdAt.toISOString(),
-      updatedAt: doc.updatedAt.toISOString()
-    };
-
-    try {
-      await redisClient.set(cacheKey, JSON.stringify(product), 'EX', 300);
-    } catch (e) {
-      console.error('Redis failed during getProductById set', e);
-    }
-
-    return product;
+      };
+    });
   }
 
   async createProduct(data: CreateProductRequest): Promise<Product> {

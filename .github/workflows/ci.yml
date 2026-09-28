@@ -25,5 +25,11 @@ jobs:
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
 
+    - name: Lint all microservices
+      run: pnpm run lint --if-present
+
     - name: Build all microservices
       run: pnpm run build
+
+    - name: Run tests
+      run: pnpm run test

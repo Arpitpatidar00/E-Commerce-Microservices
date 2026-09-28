@@ -30,6 +30,9 @@ const productSchema = new mongoose.Schema<ProductDocument>({
   }
 });
 
+productSchema.index({ createdAt: -1 });
+productSchema.index({ price: 1 });
+
 productSchema.pre('save', function() {
   this.updatedAt = new Date();
 });

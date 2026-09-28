@@ -1,10 +1,11 @@
 import { inventoryRepository } from '../repositories/inventoryRepository';
+import { NotFoundError, ConflictError } from '@ecommerce/shared';
 
 export class InventoryService {
   async getStock(productId: string) {
     const inventory = await inventoryRepository.findByProductId(productId);
     if (!inventory) {
-      throw new Error('Inventory not found');
+      throw new NotFoundError('Inventory not found');
     }
     return inventory;
   }
@@ -17,7 +18,7 @@ export class InventoryService {
     const updatedInventory = await inventoryRepository.reserveStock(productId, quantity);
     
     if (!updatedInventory) {
-      throw new Error('Insufficient stock or product not found');
+      throw new ConflictError('Insufficient stock or product not found');
     }
     
     return updatedInventory;

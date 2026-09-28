@@ -45,3 +45,9 @@ export class InternalServerError extends AppError {
     super(message, 500, false);
   }
 }
+
+export class ServiceUnavailableError extends AppError {
+  constructor(message: string = 'Service temporarily unavailable') {
+    super(message, 503);
+  }
+}

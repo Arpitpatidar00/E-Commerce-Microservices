@@ -1,11 +1,11 @@
 import { FastifyPluginAsync } from 'fastify';
 import * as productController from '../controllers/product';
-import { validateRequest } from '@ecommerce/shared';
 import { createProductRequestSchema, getProductsQuerySchema, productIdSchema } from '../validations/product.validation';
+import { authMiddleware, validateRequest } from '@ecommerce/shared';
 
 const productRoutes: FastifyPluginAsync = async (fastify, opts) => {
   fastify.post('/', {
-    preHandler: validateRequest({ body: createProductRequestSchema }) as any
+    preHandler: [authMiddleware as any, validateRequest({ body: createProductRequestSchema }) as any]
   }, productController.createProduct);
   
   fastify.get('/', {
